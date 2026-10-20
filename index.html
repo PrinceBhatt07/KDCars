@@ -29,6 +29,7 @@
     .ticks span:before{content:"✓";display:inline-grid;place-items:center;width:20px;height:20px;background:#d9f4e4;color:#128448;border-radius:50%;margin-right:7px;font-weight:900}
     .primary{display:inline-flex;justify-content:center;align-items:center;background:var(--green);color:#fff;padding:14px 23px;border-radius:8px;text-decoration:none;font-weight:800;border:0;cursor:pointer;font-size:16px}
     .primary:hover{background:#178748}
+    .primary:disabled{opacity:.7;cursor:wait}
     .trust-note{font-size:12px;color:var(--muted);margin-top:12px}
     .form-card{background:#fff;padding:28px;border-radius:16px;box-shadow:0 14px 42px #0b315014;border:1px solid #e3ebf2}
     .form-card h2{margin:0 0 4px;font-size:26px;color:var(--navy)}
@@ -64,6 +65,7 @@
     footer p{font-size:12px;color:#b9cad8;margin:5px 0 0}
     footer a{color:#fff}
     .smallprint{border-top:1px solid #24415a;margin-top:20px;padding-top:14px;color:#a9bdcd;font-size:11px;text-align:center}
+    .hp{position:absolute;left:-9999px;opacity:0;height:0;width:0}
     @media(max-width:800px){.hero{padding:35px 0}.hero-grid{grid-template-columns:1fr;gap:28px}.benefits,.steps{grid-template-columns:repeat(2,1fr)}.form-card{padding:22px}.nav{min-height:68px}.brand{font-size:26px}}
     @media(max-width:480px){.call{font-size:13px}.brand{font-size:23px}.benefits,.steps{grid-template-columns:1fr 1fr;gap:10px}.benefit{padding:16px 10px}.two{grid-template-columns:1fr;gap:0}.hero-grid{gap:24px}.intro{font-size:16px}.form-card h2{font-size:23px}}
   </style>
@@ -94,6 +96,8 @@
         <h2>Get a Scrap Car Quote</h2>
         <p class="sub">Enter your details. We’ll follow up to understand your vehicle and location.</p>
         <form id="leadForm">
+          <!-- Honeypot field to block spam bots (leave empty) -->
+          <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
           <div class="field"><label for="name">Full name *</label><input id="name" name="name" autocomplete="name" placeholder="Enter your name" required></div>
           <div class="two">
             <div class="field"><label for="phone">Mobile number *</label><input id="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel" pattern="[0-9 +()-]{10,16}" placeholder="Your contact number" required></div>
@@ -110,7 +114,7 @@
             </select>
           </div>
           <div class="field"><label for="pickup">Pickup locality (optional)</label><input id="pickup" name="pickup" placeholder="Area or PIN code"></div>
-          <button class="primary" type="submit">Request My Quote</button>
+          <button class="primary" type="submit" id="submitBtn">Request My Quote</button>
           <p class="privacy">By submitting, you agree that KD carZ may contact you about this enquiry.</p>
           <p id="formMessage" role="status" aria-live="polite" style="font-size:12px;color:#b42318;margin:8px 0 0"></p>
         </form>
@@ -163,17 +167,28 @@
 
 <script>
   document.getElementById('year').textContent = new Date().getFullYear();
+
+  // Email recipients (via FormSubmit.co): primary address in the URL, second as CC.
+  var EMAIL_PRIMARY = 'Gauravkumarbahnot14@gmail.com';
+  var EMAIL_CC = 'khshlshrm@gmail.com';
+
   document.getElementById('leadForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    const form = e.currentTarget;
-    const phone = document.getElementById('phone').value.replace(/\D/g, '');
-    const message = document.getElementById('formMessage');
+    var form = e.currentTarget;
+    var btn = document.getElementById('submitBtn');
+    var message = document.getElementById('formMessage');
+    var phone = document.getElementById('phone').value.replace(/\D/g, '');
+
     if (phone.length < 10 || phone.length > 13) {
+      message.style.color = '#b42318';
       message.textContent = 'Please enter a valid mobile number.';
       return;
     }
-    const data = new FormData(form);
-    const lines = [
+
+    var data = new FormData(form);
+
+    // Open WhatsApp immediately (must happen inside the click/submit event so it isn't popup-blocked).
+    var lines = [
       'Hello KD carZ, I want a quote for my scrap car.',
       'Name: ' + data.get('name'),
       'Customer mobile: ' + data.get('phone'),
@@ -183,12 +198,44 @@
       'Condition: ' + data.get('condition'),
       'Pickup locality: ' + (data.get('pickup') || 'Not provided')
     ];
-    // This opens WhatsApp with the lead details pre-filled. The customer must press Send.
-    const whatsappNumber = '919988829191';
-    const url = 'https://wa.me/' + whatsappNumber + '?text=' + encodeURIComponent(lines.join('\n'));
-    window.open(url, '_blank', 'noopener,noreferrer');
-    message.style.color = '#167447';
-    message.textContent = 'WhatsApp is opening with your enquiry. Please press Send there to submit your details.';
+    var whatsappNumber = '919988829191';
+    var waUrl = 'https://wa.me/' + whatsappNumber + '?text=' + encodeURIComponent(lines.join('\n'));
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+
+    // Send the same details by email to both addresses.
+    data.append('_subject', 'New Scrap Car Enquiry - KD carZ');
+    data.append('_cc', EMAIL_CC);
+    data.append('_template', 'table');
+    data.append('_captcha', 'false');
+
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    message.style.color = '#5e6e7e';
+    message.textContent = '';
+
+    fetch('https://formsubmit.co/ajax/' + EMAIL_PRIMARY, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      body: data
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(json) {
+      if (json && (json.success === 'true' || json.success === true)) {
+        message.style.color = '#167447';
+        message.textContent = 'Thank you! Your enquiry has been sent. WhatsApp is also opening - please press Send there too.';
+        form.reset();
+      } else {
+        throw new Error('Email service error');
+      }
+    })
+    .catch(function() {
+      message.style.color = '#b42318';
+      message.textContent = 'We could not send the email. Please press Send in WhatsApp or call 99888 29191.';
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.textContent = 'Request My Quote';
+    });
   });
 </script>
 </body>
